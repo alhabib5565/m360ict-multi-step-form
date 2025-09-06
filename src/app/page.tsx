@@ -1,16 +1,20 @@
 "use client";
 import StepIndicator from "@/components/multi-step-form/StepIndicator";
 import { Button } from "@/components/ui/button";
-import React, { useMemo, useState } from "react";
+import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import InputField from "@/components/multi-step-form/InputField";
 import SelectField from "@/components/multi-step-form/SelectField";
 import { cn } from "@/lib/utils";
 import { mockManagers } from "@/constants/mockManagerData";
 import SearchableSelectField from "@/components/multi-step-form/SearchAbleSelectField";
+import { skillsData } from "@/constants/skillData";
+import { Label } from "@radix-ui/react-label";
+import { Input } from "@/components/ui/input";
+
 const departmentOptions = [
   "Engineering",
   "Marketing",
@@ -89,9 +93,41 @@ const baseJobDetailsSchema = z.object({
   jobType: z.enum(["Full-time", "Part-time", "Contract"], {
     required_error: "Job type is required",
   }),
-  minSalary: z.number({ invalid_type_error: "Please enter valid number" }),
-  maxSalary: z.number({ invalid_type_error: "Please enter valid number" }),
+  minSalary: z.coerce.number({
+    invalid_type_error: "Please enter valid number",
+  }),
+  maxSalary: z.coerce.number({
+    invalid_type_error: "Please enter valid number",
+  }),
   manager: z.string().min(1, "Manager is required"),
+});
+
+const skillsPreferencesSchema = z.object({
+  skills: z.array(z.string()).min(3, "Select at least 3 skills"),
+  experiences: z.array(
+    z.object({
+      skill: z.string(),
+      years: z.coerce
+        .number({ invalid_type_error: "Please enter valid number" })
+        .min(1, "Experience required"),
+    })
+  ),
+  workingHours: z
+    .object({
+      start: z.string().min(1, "Start time required"),
+      end: z.string().min(1, "End time required"),
+    })
+    .refine(
+      (data) => {
+        return (
+          new Date(`1970-01-01T${data.end}:00`) >
+          new Date(`1970-01-01T${data.start}:00`)
+        );
+      },
+      { message: "End time must be after start time", path: ["end"] }
+    ),
+  remotePreference: z.coerce.number().min(0).max(100),
+  notes: z.string().max(500, "Notes cannot exceed 500 characters").optional(),
 });
 
 // Combined schema with all validation
@@ -99,6 +135,7 @@ const formSchema = z
   .object({
     ...personalSchema.shape,
     ...baseJobDetailsSchema.shape,
+    ...skillsPreferencesSchema.shape,
   })
   .superRefine((data, ctx) => {
     const { jobType, minSalary, maxSalary } = data;
@@ -169,6 +206,7 @@ const MultiStepFrom = () => {
     watch,
     trigger,
     register,
+    setValue,
     formState: { errors },
   } = useForm<TFormData>({
     resolver: zodResolver(formSchema),
@@ -186,10 +224,23 @@ const MultiStepFrom = () => {
       maxSalary: 0,
       minSalary: 0,
       manager: "",
+      //step:3
+      skills: [],
+      experiences: [],
+      workingHours: {},
+      remotePreference: 0,
+      notes: "",
     },
   });
-
-  const [jobType, department] = watch(["jobType", "department"]);
+  const { fields, remove, append } = useFieldArray({
+    control,
+    name: "experiences",
+  });
+  const [jobType, department, remotePreference] = watch([
+    "jobType",
+    "department",
+    "remotePreference",
+  ]);
 
   const managerOptions = useMemo(() => {
     return mockManagers
@@ -199,7 +250,8 @@ const MultiStepFrom = () => {
         label: m.name,
       }));
   }, [department]);
-  console.log(managerOptions, "managers");
+  const skills = skillsData[department as keyof typeof skillsData];
+
   const validateCurrentStep = async () => {
     let fieldsToValidate: (keyof TFormData)[] = [];
 
@@ -224,9 +276,15 @@ const MultiStepFrom = () => {
           "manager",
         ];
         break;
-      // case 3:
-      //   fieldsToValidate = [""];
-      //   break;
+      case 3:
+        fieldsToValidate = [
+          "skills",
+          "experiences",
+          "workingHours",
+          "remotePreference",
+          "notes",
+        ];
+        break;
       // case 4:
       //   fieldsToValidate = [""];
       //   break;
@@ -251,6 +309,31 @@ const MultiStepFrom = () => {
   const onSubmit = (data: TFormData) => {
     console.log(data);
   };
+
+  const handleSelectSkill = (
+    e: ChangeEvent<HTMLInputElement>,
+    value: string[],
+    skill: string
+  ) => {
+    if (e.target.checked) {
+      setValue("skills", [...value, skill]);
+      append({ skill, years: 0 });
+    } else {
+      setValue(
+        "skills",
+        value.filter((s: string) => s !== skill)
+      );
+      const index = value.indexOf(skill);
+      remove(index);
+    }
+  };
+
+  useEffect(() => {
+    setValue("manager", "");
+    setValue("experiences", []);
+    setValue("skills", []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [department]);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -403,7 +486,107 @@ const MultiStepFrom = () => {
             />
           </div>
         );
+      case 3:
+        return (
+          <div className="space-y-4">
+            <Controller
+              name="skills"
+              control={control}
+              render={({ field: { value } }) => (
+                <>
+                  <div className="flex gap-4 flex-wrap">
+                    {skills.map((skill) => (
+                      <div
+                        key={skill}
+                        className="flex items-center gap-2 h-fit"
+                      >
+                        <Input
+                          onChange={(e) => handleSelectSkill(e, value, skill)}
+                          type="checkbox"
+                          id={skill}
+                          className="h-4"
+                        />
+                        <Label
+                          htmlFor={skill}
+                          className="text-sm font-medium text-gray-700 whitespace-nowrap"
+                        >
+                          {skill}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  {errors.skills && (
+                    <p className="text-sm text-red-500">
+                      {errors.skills.message}
+                    </p>
+                  )}
+                </>
+              )}
+            />
+            <div className="space-y-2">
+              <Label className="font-medium text-gray-700 pb-2">
+                Experience for Each Skill
+              </Label>
+              {fields.map((field, index) => (
+                <div
+                  key={field.id}
+                  className="grid grid-cols-2 gap-4 items-center"
+                >
+                  <InputField
+                    label={`Skill: ${field.skill}`}
+                    readOnly
+                    disabled
+                    {...register(`experiences.${index}.skill` as const)}
+                  />
+                  <InputField
+                    label="Years"
+                    placeholder="e.g. 2"
+                    error={errors.experiences?.[index]?.years?.message}
+                    {...register(`experiences.${index}.years` as const)}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <InputField
+                label="Start Time"
+                type="time"
+                required
+                error={errors.workingHours?.start?.message}
+                {...register("workingHours.start")}
+              />
+              <InputField
+                label="End Time"
+                type="time"
+                required
+                error={errors.workingHours?.end?.message}
+                {...register("workingHours.end")}
+              />
+            </div>
 
+            <div className="flex gap-2 items-center">
+              <InputField
+                label="Remote Work Preference"
+                type="range"
+                className="w-full"
+                required
+                error={errors.remotePreference?.message}
+                {...register("remotePreference")}
+              />
+              <span className="whitespace-nowrap">
+                {remotePreference || 0} %
+              </span>
+            </div>
+
+            <InputField
+              label="Extra Notes (optional)"
+              type="text"
+              placeholder="Any additional information..."
+              error={errors.notes?.message}
+              {...register("notes")}
+            />
+          </div>
+        );
       default:
         break;
     }

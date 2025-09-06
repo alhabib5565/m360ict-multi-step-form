@@ -10,6 +10,7 @@ type TInputField = {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  readOnly?: true;
 };
 
 const InputField = ({
@@ -19,6 +20,7 @@ const InputField = ({
   placeholder,
   required,
   className,
+  readOnly,
   ...props
 }: TInputField) => {
   const id = label.toLowerCase().replace(/\s+/g, "-");
@@ -34,6 +36,7 @@ const InputField = ({
         id={id}
         type={type}
         placeholder={placeholder}
+        readOnly={readOnly}
         className={`${error ? "border-red-500 focus:border-red-500" : ""}`}
         {...(props as React.InputHTMLAttributes<HTMLInputElement>)}
       />

@@ -7,10 +7,10 @@ interface StepIndicatorProps {
 const StepIndicator = ({ currentStep }: StepIndicatorProps) => {
   const steps = [
     { number: 1, title: "Personal Info" },
-    { number: 2, title: "Utility Details" },
-    { number: 3, title: "Usage & Pricing" },
-    { number: 4, title: "Final Details" },
-    { number: 5, title: "Final Details" },
+    { number: 2, title: "Job Details" },
+    { number: 3, title: "Skills & Preferences" },
+    { number: 4, title: "Emergency Contact" },
+    { number: 5, title: "Review & Submit" },
   ];
   const totalSteps = steps.length;
   return (
