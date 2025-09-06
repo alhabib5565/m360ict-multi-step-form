@@ -2,7 +2,6 @@
 import StepIndicator from "@/components/multi-step-form/StepIndicator";
 import { Button } from "@/components/ui/button";
 import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Controller, useFieldArray, useForm } from "react-hook-form";
@@ -14,191 +13,20 @@ import SearchableSelectField from "@/components/multi-step-form/SearchAbleSelect
 import { skillsData } from "@/constants/skillData";
 import { Label } from "@radix-ui/react-label";
 import { Input } from "@/components/ui/input";
-
-const departmentOptions = [
-  "Engineering",
-  "Marketing",
-  "Sales",
-  "HR",
-  "Finance",
-];
-
-const jobTypes = ["Full-time", "Part-time", "Contract"];
-const personalSchema = z.object({
-  fullName: z
-    .string()
-    .min(1, "Full name is required")
-    .refine((val) => val.trim().split(" ").length >= 2, {
-      message: "Full name must have at least 2 words",
-    }),
-  email: z.string().email("Invalid email address"),
-  phoneNumber: z
-    .string()
-    .regex(
-      /^\+\d{1,3}-\d{3}-\d{3}-\d{4}$/,
-      "Phone must be like +1-123-456-7890"
-    ),
-  dob: z
-    .string({
-      required_error: "Date of birth is required",
-      invalid_type_error: "Invalid date",
-    })
-    .refine(
-      (date) => {
-        const today = new Date();
-        const dob = new Date(date);
-        let age = today.getFullYear() - dob.getFullYear();
-        const m = today.getMonth() - dob.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-        return age >= 18;
-      },
-      { message: "You must be at least 18 years old" }
-    ),
-  profilePicture: z
-    .any()
-    .optional()
-    .superRefine((file, ctx) => {
-      if (!file || file.length === 0) return true; // optional
-      const f = file[0]; // single file
-      const allowedType = ["image/jpeg", "image/png"];
-
-      if (!allowedType.includes(f.type)) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Only JPG/PNG files are allowed",
-        });
-      }
-      if (file.size > 2 * 1024 * 1024) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "File must be less than 2MB",
-        });
-      }
-    }),
-});
-
-const baseJobDetailsSchema = z.object({
-  department: z.string().min(1, "Department is required"),
-  positionTitle: z
-    .string()
-    .min(3, "Position title must be at least 3 characters"),
-  startDate: z.string().refine((date) => {
-    const today = new Date();
-    const start = new Date(date);
-    const diffDays = Math.floor(
-      (start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return diffDays >= 0 && diffDays <= 90;
-  }, "Start date must be within 0–90 days from today"),
-  jobType: z.enum(["Full-time", "Part-time", "Contract"], {
-    required_error: "Job type is required",
-  }),
-  minSalary: z.coerce.number({
-    invalid_type_error: "Please enter valid number",
-  }),
-  maxSalary: z.coerce.number({
-    invalid_type_error: "Please enter valid number",
-  }),
-  manager: z.string().min(1, "Manager is required"),
-});
-
-const skillsPreferencesSchema = z.object({
-  skills: z.array(z.string()).min(3, "Select at least 3 skills"),
-  experiences: z.array(
-    z.object({
-      skill: z.string(),
-      years: z.coerce
-        .number({ invalid_type_error: "Please enter valid number" })
-        .min(1, "Experience required"),
-    })
-  ),
-  workingHours: z
-    .object({
-      start: z.string().min(1, "Start time required"),
-      end: z.string().min(1, "End time required"),
-    })
-    .refine(
-      (data) => {
-        return (
-          new Date(`1970-01-01T${data.end}:00`) >
-          new Date(`1970-01-01T${data.start}:00`)
-        );
-      },
-      { message: "End time must be after start time", path: ["end"] }
-    ),
-  remotePreference: z.coerce.number().min(0).max(100),
-  notes: z.string().max(500, "Notes cannot exceed 500 characters").optional(),
-});
-
-// Combined schema with all validation
-const formSchema = z
-  .object({
-    ...personalSchema.shape,
-    ...baseJobDetailsSchema.shape,
-    ...skillsPreferencesSchema.shape,
-  })
-  .superRefine((data, ctx) => {
-    const { jobType, minSalary, maxSalary } = data;
-
-    // Salary required check
-    if (minSalary == null || maxSalary == null) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Salary expectation is required",
-        path: ["minSalary"],
-      });
-      return;
-    }
-
-    // Full-time validation
-    if (jobType === "Full-time") {
-      if (minSalary < 30000) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Full-time minimum salary must be at least $30,000",
-          path: ["minSalary"],
-        });
-      }
-      if (maxSalary > 200000) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Full-time maximum salary cannot exceed $200,000",
-          path: ["maxSalary"],
-        });
-      }
-    }
-
-    // Contract validation
-    if (jobType === "Contract") {
-      if (minSalary < 50) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Contract minimum hourly rate must be at least $50",
-          path: ["minSalary"],
-        });
-      }
-      if (maxSalary > 150) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Contract maximum hourly rate cannot exceed $150",
-          path: ["maxSalary"],
-        });
-      }
-    }
-
-    if (minSalary > maxSalary) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Minimum salary cannot exceed maximum salary",
-        path: ["minSalary"],
-      });
-    }
-  });
-
-type TFormData = z.infer<typeof formSchema>;
+import { getAge } from "@/utils/getAge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  formDefaultValue,
+  formSchema,
+  TFormData,
+} from "@/schema/multiStepFormSchema";
+import { departmentOptions, jobTypes, relations } from "@/constants/common";
+import { getCurrentStepFields } from "@/utils/getCurrentStepFields";
+import Swal from "sweetalert2";
 
 const MultiStepFrom = () => {
   const [currentStep, setCurrentStep] = useState(1);
+  const [formState, setFormState] = useState<TFormData | null>(null);
 
   const {
     control,
@@ -207,39 +35,22 @@ const MultiStepFrom = () => {
     trigger,
     register,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<TFormData>({
     resolver: zodResolver(formSchema),
     mode: "onChange",
-    defaultValues: {
-      fullName: "",
-      email: "",
-      phoneNumber: "",
-      dob: "",
-      profilePicture: "",
-      department: "",
-      positionTitle: "",
-      startDate: "",
-      jobType: "Full-time",
-      maxSalary: 0,
-      minSalary: 0,
-      manager: "",
-      //step:3
-      skills: [],
-      experiences: [],
-      workingHours: {},
-      remotePreference: 0,
-      notes: "",
-    },
+    defaultValues: formDefaultValue,
   });
   const { fields, remove, append } = useFieldArray({
     control,
     name: "experiences",
   });
-  const [jobType, department, remotePreference] = watch([
+  const [jobType, department, remotePreference, dob] = watch([
     "jobType",
     "department",
     "remotePreference",
+    "dob",
   ]);
 
   const managerOptions = useMemo(() => {
@@ -252,49 +63,15 @@ const MultiStepFrom = () => {
   }, [department]);
   const skills = skillsData[department as keyof typeof skillsData];
 
-  const validateCurrentStep = async () => {
-    let fieldsToValidate: (keyof TFormData)[] = [];
-
-    switch (currentStep) {
-      case 1:
-        fieldsToValidate = [
-          "fullName",
-          "email",
-          "phoneNumber",
-          "dob",
-          "profilePicture",
-        ];
-        break;
-      case 2:
-        fieldsToValidate = [
-          "department",
-          "positionTitle",
-          "startDate",
-          "jobType",
-          "maxSalary",
-          "minSalary",
-          "manager",
-        ];
-        break;
-      case 3:
-        fieldsToValidate = [
-          "skills",
-          "experiences",
-          "workingHours",
-          "remotePreference",
-          "notes",
-        ];
-        break;
-      // case 4:
-      //   fieldsToValidate = [""];
-      //   break;
-    }
+  const handleValidateCurrentStep = async () => {
+    const fieldsToValidate: (keyof TFormData)[] =
+      getCurrentStepFields(currentStep);
 
     return await trigger(fieldsToValidate); // trigger validation to check thise field are valid
   };
 
   const handleNextStep = async () => {
-    const isValid = await validateCurrentStep();
+    const isValid = await handleValidateCurrentStep();
     if (isValid && currentStep < 5) {
       setCurrentStep(currentStep + 1);
     }
@@ -305,9 +82,17 @@ const MultiStepFrom = () => {
       setCurrentStep(currentStep - 1);
     }
   };
-
+  console.log(formState);
   const onSubmit = (data: TFormData) => {
     console.log(data);
+    Swal.fire({
+      title: "form submited successfully!",
+      icon: "success",
+      draggable: true,
+    });
+    reset(formDefaultValue);
+    setFormState(null);
+    setCurrentStep(1);
   };
 
   const handleSelectSkill = (
@@ -334,6 +119,16 @@ const MultiStepFrom = () => {
     setValue("skills", []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [department]);
+
+  useEffect(() => {
+    const subscription = watch((value) => {
+      setFormState(value as TFormData); // save to local state
+    });
+
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
+  const age = getAge(dob);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -587,8 +382,205 @@ const MultiStepFrom = () => {
             />
           </div>
         );
+      case 4:
+        return (
+          <div className="space-y-4">
+            <InputField
+              label="Emergency Contact Name"
+              required
+              placeholder="Enter emergency contact name"
+              error={errors.emergencyContact?.contactName?.message}
+              {...register("emergencyContact.contactName")}
+            />
+
+            <SelectField
+              control={control}
+              label="Relationship"
+              name="emergencyContact.relation"
+              options={relations}
+              error={errors.emergencyContact?.relation?.message}
+              placeholder="Select relationship"
+              required
+            />
+
+            <InputField
+              label="Emergency Contact Phone"
+              required
+              placeholder="Enter phone number (e.g. +1-123-456-7890)"
+              error={errors.emergencyContact?.phoneNumber?.message}
+              {...register("emergencyContact.phoneNumber")}
+            />
+
+            {/* Guardian Contact - Show only if under 21 */}
+            {age < 21 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InputField
+                  label="Guardian Name"
+                  required
+                  placeholder="Enter guardian name"
+                  error={errors.emergencyContact?.guardianContactName?.message}
+                  {...register("emergencyContact.guardianContactName")}
+                />
+
+                <InputField
+                  label="Guardian Phone"
+                  required
+                  placeholder="Enter guardian phone (e.g. +1-123-456-7890)"
+                  error={errors.emergencyContact?.guardianContactPhone?.message}
+                  {...register("emergencyContact.guardianContactPhone")}
+                />
+              </div>
+            )}
+          </div>
+        );
+      case 5:
+        return (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold mb-4">Review & Submit</h2>
+
+            {formState && (
+              <>
+                {/* Personal Information */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-3">
+                    Personal Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <strong>Full Name:</strong> {formState.fullName}
+                    </div>
+                    <div>
+                      <strong>Email:</strong> {formState.email}
+                    </div>
+                    <div>
+                      <strong>Phone:</strong> {formState.phoneNumber}
+                    </div>
+                    <div>
+                      <strong>Date of Birth:</strong> {formState.dob} (Age:{" "}
+                      {age})
+                    </div>
+                  </div>
+                </div>
+
+                {/* Job Details */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-3">
+                    Job Details
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <strong>Department:</strong> {formState.department}
+                    </div>
+                    <div>
+                      <strong>Position:</strong> {formState.positionTitle}
+                    </div>
+                    <div>
+                      <strong>Start Date:</strong> {formState.startDate}
+                    </div>
+                    <div>
+                      <strong>Job Type:</strong> {formState.jobType}
+                    </div>
+                    <div>
+                      <strong>Salary Range:</strong> $
+                      {formState.minSalary?.toLocaleString()} - $
+                      {formState.maxSalary?.toLocaleString()}
+                    </div>
+                    <div>
+                      <strong>Manager:</strong> {formState.manager}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skills & Preferences */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-3">
+                    Skills & Preferences
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <strong>Skills:</strong> {formState.skills?.join(", ")}
+                    </div>
+                    <div>
+                      <strong>Working Hours:</strong>{" "}
+                      {formState.workingHours?.start} -{" "}
+                      {formState.workingHours?.end}
+                    </div>
+                    <div>
+                      <strong>Remote Preference:</strong>{" "}
+                      {formState.remotePreference}%
+                    </div>
+                    {formState.notes && (
+                      <div>
+                        <strong>Notes:</strong> {formState.notes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Emergency Contact */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-3">
+                    Emergency Contact
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <strong>Name:</strong>{" "}
+                      {formState.emergencyContact?.contactName}
+                    </div>
+                    <div>
+                      <strong>Relationship:</strong>{" "}
+                      {formState.emergencyContact?.relation}
+                    </div>
+                    <div>
+                      <strong>Phone:</strong>{" "}
+                      {formState.emergencyContact?.phoneNumber}
+                    </div>
+                    {age < 21 && (
+                      <>
+                        <div>
+                          <strong>Guardian Name:</strong>{" "}
+                          {formState.emergencyContact?.guardianContactName}
+                        </div>
+                        <div>
+                          <strong>Guardian Phone:</strong>{" "}
+                          {formState.emergencyContact?.guardianContactPhone}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Confirmation */}
+            <div className="border-t pt-4">
+              <Controller
+                name="confirmInformation"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="confirm"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <Label htmlFor="confirm" className="text-sm">
+                      I confirm all information is correct and ready to submit *
+                    </Label>
+                  </div>
+                )}
+              />
+              {errors.confirmInformation && (
+                <p className="text-sm text-red-500 mt-1">
+                  {errors.confirmInformation.message}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+
       default:
-        break;
+        return null;
     }
   };
   return (
