@@ -9,7 +9,7 @@ It includes step-wise validation, conditional fields, dynamic skill selection, a
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/multi-step-form.git
+   git clone https://github.com/alhabib5565/m360ict-multi-step-form.git
    cd multi-step-form
 2. **Install dependencies**
    ```bash
